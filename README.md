@@ -12,7 +12,7 @@
 Bacformer is a prokaryotic foundational model which models
 whole-bacterial genomes as a sequence of proteins ordered by their genomic coordinates on the chromosome and plasmid(s).
 It takes as input average protein embeddings from protein language models and computes contextualised protein
-embeddings conditional on other proteis present in the genome. Bacformer is trained on a diverse dataset of ~1.3M bacterial genomes and ~3B proteins.
+embeddings conditional on other proteins present in the genome. Bacformer is trained on a diverse dataset of ~1.3M bacterial genomes and ~3B proteins.
 
 ![Bacformer](files/Bacformer.png)
 
