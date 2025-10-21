@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import defaultdict
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -246,6 +247,16 @@ def generate_protein_embeddings(
     return mean_protein_embeddings
 
 
+def agg_prot_seqs_to_contigs(protein_sequences: list[str], contig_ids: list[str]) -> tuple[list[list[str]], list[str]]:
+    """Convert a list of protein sequences to a nested list of proteins where each nested list represents proteins in the same contig"""
+    contig_prot_seqs = defaultdict(list)
+    for prot_seq, contig_id in zip(protein_sequences, contig_ids, strict=False):
+        contig_prot_seqs[contig_id].append(prot_seq)
+    contig_ids = list(contig_prot_seqs.keys())
+    protein_sequences = list(contig_prot_seqs.values())
+    return protein_sequences, contig_ids
+
+
 def compute_genome_protein_embeddings(
     model: Callable,
     tokenizer: Callable,
@@ -269,15 +280,27 @@ def compute_genome_protein_embeddings(
     """
     assert len(protein_sequences) > 0, "Protein sequence list is empty, please include proteins in the list"
 
+    # preprocess contig and protein sequence info
+    if contig_ids is not None:
+        # protein_sequences and contig_ids must always have the same length
+        assert len(protein_sequences) == len(contig_ids), "Length of protein sequences and contig IDs must match"
+        if isinstance(protein_sequences[0], str):
+            # convert a list of protein sequences to a nested list of proteins where each nested list represents proteins in the same contig
+            contig_ids, protein_sequences = agg_prot_seqs_to_contigs(protein_sequences, contig_ids)
+        elif isinstance(protein_sequences[0], list):
+            # no need for further processing
+            pass
+        else:
+            raise ValueError(
+                "'protein_sequences' argument must be either a list of strings or a nested list of strings,"
+                " where each nested list represents protein sequences in the same contig."
+            )
+    else:  # if contig_ids is None
+        contig_ids = [0] * len(protein_sequences)
+
     # if the list of protein sequences is not nested, make it nested
     if isinstance(protein_sequences[0], str):
         protein_sequences = [protein_sequences]
-
-    if contig_ids is not None:
-        assert len(protein_sequences) == len(contig_ids), "Length of protein sequences and contig IDs must match"
-    else:
-        # create dummy contig ids to make it work in the next step
-        contig_ids = [0] * len(protein_sequences)
 
     # create and explode dataframe
     prot_seqs_df = pd.DataFrame(
@@ -620,7 +643,8 @@ def dataset_col_to_bacformer_inputs(
 
 
 def protein_seqs_to_bacformer_inputs(
-    protein_sequences: list[str],
+    protein_sequences: list[str] | list[list[str]],
+    contig_ids: list[str] | None = None,
     batch_size: int = 64,
     max_prot_seq_len: int = 1024,
     max_n_proteins: int = 6000,
@@ -630,7 +654,11 @@ def protein_seqs_to_bacformer_inputs(
     """Convert protein sequences to inputs for Bacformer model.
 
     Args:
-        protein_sequences (List[str]): The protein sequences to convert.
+        protein_sequences (List[str] | List[List[str]]): The protein sequences to convert. The protein sequences
+            can be passed either as a list of string or a nested list of strings, where each nested list
+            represents a set of proteins in the same contig/chromosome/plasmid.
+        contig_ids (List[str]): A list of contig_ids representing contig/chromosome/plasmid.
+            Must be of the same length as protein_sequences argument.
         batch_size (int): The batch size to use for processing.
         max_prot_seq_len (int): The maximum protein sequence length for the model.
         max_n_proteins (int): The maximum number of proteins to use for each genome.
@@ -652,6 +680,7 @@ def protein_seqs_to_bacformer_inputs(
         model=model,
         tokenizer=tokenizer,
         protein_sequences=protein_sequences,
+        contig_ids=contig_ids,
         model_type=model_type,
         batch_size=batch_size,
         max_prot_seq_len=max_prot_seq_len,

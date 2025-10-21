@@ -184,6 +184,51 @@ with torch.no_grad():
 print('last hidden state shape:', outputs["last_hidden_state"].shape)
 ```
 
+#### Encoding contig/chromosome/plasmid information
+
+Bacformer encodes the contig/chromosome/plasmid information by adding the `contig_embedding`. For the model to
+account for it pass the contig ID of each protein as input. By default Bacformer incorporates the contig information
+whenever available.
+
+NOTE: Every input protein sequence must belong to a contig, otherwise they will be treated
+as belonging to a single contig.
+
+```python
+import torch
+from transformers import AutoModel
+from bacformer.pp import protein_seqs_to_bacformer_inputs
+
+device = "cuda:0"
+model = AutoModel.from_pretrained(
+    "macwiatrak/bacformer-masked-MAG", trust_remote_code=True
+).to(device).eval().to(torch.bfloat16)
+
+# Example input: a sequence of protein sequences
+# in this case: 4 toy protein sequences
+# Bacformer was trained with a maximum nr of proteins of 6000.
+protein_sequences = [
+    "MGYDLVAGFQKNVRTI",
+    "MKAILVVLLG",
+    "MQLIESRFYKDPWGNVHATC",
+    "MSTNPKPQRFAWL",
+]
+contig_ids = ["contig_1", "contig_1", "contig_2", "contig_3"]
+# embed the proteins with ESM-2 to get average protein embeddings
+inputs = protein_seqs_to_bacformer_inputs(
+    protein_sequences,
+    contig_ids=contig_ids,
+    device=device,
+    batch_size=128,  # the batch size for computing the protein embeddings
+    max_n_proteins=6000,  # the maximum number of proteins Bacformer was trained with
+)
+
+# contig_ids represent the contig information for each protein
+print(inputs['token_type_ids'])
+# compute contextualised protein embeddings with Bacformer
+with torch.no_grad():
+    outputs = model(**inputs, return_dict=True)
+```
+
 ### Embed dataset column with Bacformer
 
 Use Bacformer to embed a column of protein sequences from a HuggingFace dataset. The example below can be easily adapted
