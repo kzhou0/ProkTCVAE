@@ -286,7 +286,7 @@ def compute_genome_protein_embeddings(
         assert len(protein_sequences) == len(contig_ids), "Length of protein sequences and contig IDs must match"
         if isinstance(protein_sequences[0], str):
             # convert a list of protein sequences to a nested list of proteins where each nested list represents proteins in the same contig
-            contig_ids, protein_sequences = agg_prot_seqs_to_contigs(protein_sequences, contig_ids)
+            protein_sequences, contig_ids = agg_prot_seqs_to_contigs(protein_sequences, contig_ids)
         elif isinstance(protein_sequences[0], list):
             # no need for further processing
             pass
@@ -296,11 +296,10 @@ def compute_genome_protein_embeddings(
                 " where each nested list represents protein sequences in the same contig."
             )
     else:  # if contig_ids is None
+        # if the list of protein sequences is not nested, make it nested
+        if isinstance(protein_sequences[0], str):
+            protein_sequences = [protein_sequences]
         contig_ids = [0] * len(protein_sequences)
-
-    # if the list of protein sequences is not nested, make it nested
-    if isinstance(protein_sequences[0], str):
-        protein_sequences = [protein_sequences]
 
     # create and explode dataframe
     prot_seqs_df = pd.DataFrame(
