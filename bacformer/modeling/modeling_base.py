@@ -311,37 +311,54 @@ class BacformerTransformerEncoder(nn.Module):
 # Embeddings (DNA/protein-ready)
 # =========================
 class GenomicEmbeddings(nn.Module):
-    """
-    Use token ids (e.g., k-mers) and/or special tokens.
-    If special_tokens_mask[i,j] == prot_emb_token_id -> use token embedding,
-    otherwise index special token embedding with that mask value.
-    """
+    """Construct the protein embeddings from protein sequence, position embeddings and sequence type embeddings."""
+
     def __init__(self, config: BacformerConfig):
         super().__init__()
         self.config = config
-        self.token_embeddings = nn.Embedding(
-            config.protein_clusters_vocab_size,  # or your vocab_size for genomes/k-mers
-            config.hidden_size,
-            padding_idx=config.pad_token_id,
-        )
+        self.linear = nn.Linear(config.hidden_size, config.hidden_size)
+
         self.token_type_embeddings = nn.Embedding(
             num_embeddings=config.max_token_type_embeddings + 1,
             embedding_dim=config.hidden_size,
             padding_idx=config.max_token_type_embeddings,
         )
+
         self.special_tokens_embeddings = nn.Embedding(
             num_embeddings=config.num_special_tokens,
             embedding_dim=config.hidden_size,
-            padding_idx=config.pad_token_id,
         )
-
         self.prot_emb_token_id = config.prot_emb_token_id
         self.pad_token_id = config.pad_token_id
 
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-        self.linear = nn.Linear(config.hidden_size, config.hidden_size)
+    def forward(
+        self,
+        protein_embeddings: torch.Tensor = None,
+        special_tokens_mask: torch.Tensor = None,
+        token_type_ids: torch.Tensor = None,
+        labels: torch.Tensor = None,  # used for causal protein family modeling
+        property_ids: torch.Tensor = None,  # used for conditional fine-tuning for desired property
+    ) -> torch.Tensor:
+        """Forward pass for protein embeddings."""
+        bs, seq_length, dim = protein_embeddings.shape
+
+        # pass the pooled ESM protein embeddings through a linear layer
+        protein_embeddings = self.linear(protein_embeddings.type_as(self.linear.weight))
+        protein_embeddings = torch.where(
+            special_tokens_mask.unsqueeze(-1).repeat(1, 1, dim) == self.prot_emb_token_id,
+            protein_embeddings,
+            self.special_tokens_embeddings(special_tokens_mask),
+        )
+
+        if token_type_ids is not None:
+            protein_embeddings += self.token_type_embeddings(token_type_ids)
+
+        protein_embeddings = self.LayerNorm(protein_embeddings)
+        protein_embeddings = self.dropout(protein_embeddings)
+        return protein_embeddings
 
     def forward(
         self,
